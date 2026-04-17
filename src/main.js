@@ -16,7 +16,19 @@ import { XYZTilesPlugin } from '3d-tiles-renderer/plugins';
 import GUI from 'lil-gui';
 
 const SAN_FRANCISCO = { lat: 37.7749, lon: -122.4194 };
-const VIEW_HEIGHT_METERS = 15_000;
+const VIEW_HEIGHT_METERS = 12_000_000;
+const TILE_SOURCES = {
+  openStreetMap: {
+    label: 'OpenStreetMap',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    levels: 19,
+  },
+  moon: {
+    label: 'Moon',
+    url: 'https://cartocdn-gusc.global.ssl.fastly.net/opmbuilder/api/v1/map/named/opm-moon-basemap-v0-1/1/{z}/{x}/{y}.png',
+    levels: 8,
+  },
+};
 
 const app = document.getElementById('app');
 
@@ -29,22 +41,32 @@ renderer.setPixelRatio(window.devicePixelRatio);
 renderer.setSize(window.innerWidth, window.innerHeight);
 app.appendChild(renderer.domElement);
 
-const tiles = new TilesRenderer();
-tiles.registerPlugin(
-  new XYZTilesPlugin({
-    // OSM standard tile server. Respect the tile usage policy:
-    // https://operations.osmfoundation.org/policies/tiles/ (no heavy/bulk use).
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    shape: 'ellipsoid',
-    levels: 19,
-  }),
+function createTilesRenderer({ url, levels }) {
+  const tiles = new TilesRenderer();
+  tiles.registerPlugin(
+    new XYZTilesPlugin({
+      url,
+      shape: 'ellipsoid',
+      endCaps: false,
+      levels,
+    }),
+  );
+  tiles.setCamera(camera);
+  tiles.setResolutionFromRenderer(camera, renderer);
+  scene.add(tiles.group);
+  return tiles;
+}
+
+const tileRenderers = Object.fromEntries(
+  Object.entries(TILE_SOURCES).map(([key, source]) => [key, createTilesRenderer(source)]),
 );
-tiles.setCamera(camera);
-tiles.setResolutionFromRenderer(camera, renderer);
-scene.add(tiles.group);
+let activeTileRenderer = tileRenderers.openStreetMap;
+Object.values(tileRenderers).forEach((tiles) => {
+  tiles.group.visible = tiles === activeTileRenderer;
+});
 
 // Wireframe ellipsoid matching WGS84 (radius.x/y equatorial, radius.z polar, Z-axis = pole).
-const { radius } = tiles.ellipsoid;
+const { radius } = activeTileRenderer.ellipsoid;
 const wireframeGeometry = new SphereGeometry(1, 64, 32);
 wireframeGeometry.rotateX(-Math.PI / 2);
 wireframeGeometry.scale(radius.x, radius.y, radius.z);
@@ -52,16 +74,17 @@ const wireframe = new Mesh(
   wireframeGeometry,
   new MeshBasicMaterial({ color: 0x66ccff, wireframe: true }),
 );
-wireframe.visible = false;
-tiles.group.add(wireframe);
+wireframe.visible = true;
+wireframe.scale.setScalar(0.999);
+scene.add(wireframe);
 
-const controls = new GlobeControls(scene, camera, renderer.domElement, tiles);
+const controls = new GlobeControls(scene, camera, renderer.domElement, activeTileRenderer);
 controls.enableDamping = true;
 
 // Place the camera directly above San Francisco, looking straight down, with north up.
 // azimuth=0 → facing north; elevation=-π/2 → pitched down to nadir; roll=0.
 const cameraFrame = new Matrix4();
-tiles.ellipsoid.getObjectFrame(
+activeTileRenderer.ellipsoid.getObjectFrame(
   MathUtils.degToRad(SAN_FRANCISCO.lat),
   MathUtils.degToRad(SAN_FRANCISCO.lon),
   VIEW_HEIGHT_METERS,
@@ -77,10 +100,16 @@ camera.matrix.decompose(camera.position, camera.quaternion, camera.scale);
 camera.matrixAutoUpdate = true;
 camera.updateMatrixWorld();
 
-const settings = { renderTiles: true };
+const settings = { tileSource: TILE_SOURCES.openStreetMap.label };
 const gui = new GUI({ title: 'three-tiles' });
-gui.add(settings, 'renderTiles').name('Render tiles').onChange((value) => {
-  wireframe.visible = !value;
+gui.add(settings, 'tileSource', [
+  TILE_SOURCES.openStreetMap.label,
+  TILE_SOURCES.moon.label,
+  'None',
+]).name('Tiles').onChange((value) => {
+  const sourceKey = Object.entries(TILE_SOURCES).find(([, source]) => source.label === value)?.[0];
+  activeTileRenderer = sourceKey ? tileRenderers[sourceKey] : tileRenderers.openStreetMap;
+  controls.setTilesRenderer(activeTileRenderer);
 });
 
 const compassNeedle = document.getElementById('compass-needle');
@@ -89,8 +118,8 @@ const _tmpMat = new Matrix4();
 const _carto = { lat: 0, lon: 0, height: 0, azimuth: 0, elevation: 0, roll: 0 };
 
 function readCameraCartographic() {
-  _tmpMat.copy(tiles.group.matrixWorld).invert().multiply(camera.matrixWorld);
-  tiles.ellipsoid.getCartographicFromObjectFrame(_tmpMat, _carto, CAMERA_FRAME);
+  _tmpMat.copy(activeTileRenderer.group.matrixWorld).invert().multiply(camera.matrixWorld);
+  activeTileRenderer.ellipsoid.getCartographicFromObjectFrame(_tmpMat, _carto, CAMERA_FRAME);
   return _carto;
 }
 
@@ -106,8 +135,8 @@ function easeInOutCubic(t) {
 compassButton.addEventListener('click', () => {
   const { lat, lon, height, elevation } = readCameraCartographic();
   const frame = new Matrix4();
-  tiles.ellipsoid.getObjectFrame(lat, lon, height, 0, elevation, 0, frame, CAMERA_FRAME);
-  frame.premultiply(tiles.group.matrixWorld);
+  activeTileRenderer.ellipsoid.getObjectFrame(lat, lon, height, 0, elevation, 0, frame, CAMERA_FRAME);
+  frame.premultiply(activeTileRenderer.group.matrixWorld);
   frame.decompose(_targetPos, _targetQuat, _targetScale);
 
   northAnim = {
@@ -125,14 +154,18 @@ window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
-  tiles.setResolutionFromRenderer(camera, renderer);
+  Object.values(tileRenderers).forEach((tiles) => {
+    tiles.setResolutionFromRenderer(camera, renderer);
+  });
 });
 
 function animate() {
   requestAnimationFrame(animate);
   controls.update();
   camera.updateMatrixWorld();
-  tiles.group.updateMatrixWorld();
+  Object.values(tileRenderers).forEach((tiles) => {
+    tiles.group.updateMatrixWorld();
+  });
 
   if (northAnim) {
     const t = Math.min((performance.now() - northAnim.startTime) / northAnim.duration, 1);
@@ -141,12 +174,11 @@ function animate() {
     if (t >= 1) northAnim = null;
   }
 
-  if (settings.renderTiles) {
-    tiles.update();
-  }
-  tiles.group.traverse((obj) => {
-    if (obj !== wireframe && obj.isMesh) {
-      obj.visible = settings.renderTiles;
+  Object.values(tileRenderers).forEach((tiles) => {
+    const isActive = tiles === activeTileRenderer && settings.tileSource !== 'None';
+    tiles.group.visible = isActive;
+    if (isActive) {
+      tiles.update();
     }
   });
 
