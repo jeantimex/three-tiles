@@ -83,10 +83,10 @@ const { radius } = activeTileRenderer.ellipsoid;
 const polarLimit = MathUtils.degToRad(85.05113);
 const polarPhiLength = Math.PI / 2 - polarLimit;
 const northPolarWireframeGeometry = new SphereGeometry(1, 64, 8, 0, Math.PI * 2, 0, polarPhiLength);
-northPolarWireframeGeometry.rotateX(-Math.PI / 2);
+northPolarWireframeGeometry.rotateX(Math.PI / 2);
 northPolarWireframeGeometry.scale(radius.x, radius.y, radius.z);
 const southPolarWireframeGeometry = new SphereGeometry(1, 64, 8, 0, Math.PI * 2, Math.PI - polarPhiLength, polarPhiLength);
-southPolarWireframeGeometry.rotateX(-Math.PI / 2);
+southPolarWireframeGeometry.rotateX(Math.PI / 2);
 southPolarWireframeGeometry.scale(radius.x, radius.y, radius.z);
 const wireframeMaterial = new MeshBasicMaterial({ color: 0x66ccff, wireframe: true });
 const northPolarWireframe = new Mesh(
@@ -102,7 +102,7 @@ southPolarWireframe.visible = true;
 scene.add(northPolarWireframe, southPolarWireframe);
 
 const tileShadowGeometry = new SphereGeometry(1, 96, 48);
-tileShadowGeometry.rotateX(-Math.PI / 2);
+tileShadowGeometry.rotateX(Math.PI / 2);
 tileShadowGeometry.scale(radius.x, radius.y, radius.z);
 
 const tileShadowMaterial = new ShaderMaterial({
@@ -143,7 +143,7 @@ const moonColorMap = textureLoader.load(`${import.meta.env.BASE_URL}moon/lroc_co
 moonColorMap.colorSpace = SRGBColorSpace;
 
 const moonMapGeometry = new SphereGeometry(1, 256, 128);
-moonMapGeometry.rotateX(-Math.PI / 2);
+moonMapGeometry.rotateX(Math.PI / 2);
 moonMapGeometry.scale(radius.x, radius.y, radius.z);
 const moonMapLitMaterial = new MeshStandardMaterial({
   map: moonColorMap,
