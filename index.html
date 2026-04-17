@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>three-tiles</title>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud">Drag to orbit · scroll to zoom</div>
+    <button id="compass" type="button" title="Reset north up" aria-label="Reset north up">
+      <svg viewBox="-50 -50 100 100" width="48" height="48">
+        <circle cx="0" cy="0" r="44" fill="rgba(0,0,0,0.55)"/>
+        <g id="compass-needle">
+          <polygon points="0,-34 10,0 0,6 -10,0" fill="#ef4444"/>
+          <polygon points="0,34 10,0 0,-6 -10,0" fill="#f3f4f6"/>
+        </g>
+      </svg>
+    </button>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
